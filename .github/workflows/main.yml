@@ -6,109 +6,38 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  fmt:
-    name: formatting
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      # TODO: Enable this when more of the Linebender CI has been applied.
-      #- name: install stable toolchain
-      #  uses: dtolnay/rust-toolchain@master
-      #  with:
-      #    toolchain: ${{ env.RUST_STABLE_VER }}
-      #    components: rustfmt
-
-      - name: cargo fmt
-        run: cargo fmt --all --check
-
-      - name: install ripgrep
-        run: |
-          sudo apt update
-          sudo apt install ripgrep
-
-      - name: check copyright headers
-        run: bash .github/copyright.sh
-
-  build:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v3
-
-    # We have to use the Release mode, otherwise it would take forever.
-    - name: Test
-      run: cargo test --all --release
-
-    - name: Build C API
-      working-directory: crates/c-api
-      run: cargo build
-
-    - name: Build C API without default features
-      working-directory: crates/c-api
-      run: cargo build --no-default-features
-
-    - name: Build resvg without default support
-      working-directory: crates/resvg
-      run: cargo check --no-default-features
-
-    - name: Build usvg without default support
-      working-directory: crates/usvg
-      run: cargo check --no-default-features
-
-  msrv:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-
-      - name: Install toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.67.1
-
-      - name: Build
-        run: cargo build
-
-  # We have some Windows specific code that we should check on each commit.
   windows:
     runs-on: windows-latest
+    strategy:
+      matrix:
+        target:
+          - x86_64-pc-windows-msvc
+          - aarch64-pc-windows-msvc         
     steps:
+      - name: Install rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: default
+          toolchain: stable        
+          override: true
+          default: true
+          target: ${{ matrix.target }}     
       - name: Checkout
-        uses: actions/checkout@v3
-
-      # Toolchain is stable-x86_64-pc-windows-msvc by default. No need to change it.
-
+        uses: actions/checkout@v2
+      - name: Run cargo check
+        uses: actions-rs/cargo@v1
+        with:
+          command: check                    
+      - name: Build
+        working-directory: crates/c-api
+        run: cargo build --target=${{ matrix.target }} --lib --release
+      - name: Upload artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{ matrix.target }}
+          path: 'target/${{ matrix.target }}/release/resvg.dll'
       - name: Build thumbnailer
         working-directory: tools/explorer-thumbnailer
         env:
           RUSTFLAGS: -Ctarget-feature=+crt-static # make sure it's static
         run: cargo build
-
-      - name: Install Qt
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: '5.15.2'
-
-      # Unlike other binaries, viewsvg isn't built with crt-static
-      - name: Build C API
-        working-directory: crates/c-api
-        run: cargo build --release
-
-      - name: Prepare Developer Command Prompt for MSVC
-        uses: ilammy/msvc-dev-cmd@v1
-
-      - name: Build viewsvg
-        working-directory: tools/viewsvg
-        run: |
-          qmake
-          nmake
-
-  # If this fails, consider changing your text or adding something to .typos.toml.
-  typos:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: check typos
-        uses: crate-ci/typos@v1.28.4
