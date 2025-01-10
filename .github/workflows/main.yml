@@ -32,7 +32,7 @@ jobs:
         working-directory: crates/c-api
         run: cargo build --target=${{ matrix.target }} --lib --release
       - name: Upload artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.target }}
           path: 'target/${{ matrix.target }}/release/resvg.dll'
